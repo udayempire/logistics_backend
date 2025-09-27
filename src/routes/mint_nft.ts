@@ -10,6 +10,7 @@ import {
 } from "@hashgraph/sdk";
 import "dotenv/config";
 import lighthouse from "@lighthouse-web3/sdk";
+import { supabase } from "../db/supabase.js";
 
 const router = express.Router();
 
@@ -19,24 +20,21 @@ router.post("/create-nft", async (req, res) => {
   try {
     const { tokenName, tokenSymbol, shipmentId, from, to, contents } = req.body;
 
-    if (!tokenName || !tokenSymbol|| !shipmentId || !from || !to || !contents) {
+    if (!tokenName || !tokenSymbol || !shipmentId || !from || !to || !contents) {
       return res.status(400).json({
         success: false,
         error: "Missing fields",
       });
     }
 
-    // Load credentials
     const MY_ACCOUNT_ID = AccountId.fromString(process.env.MY_ACCOUNT_ID!);
     const MY_PRIVATE_KEY = PrivateKey.fromStringECDSA(
       process.env.MY_PRIVATE_KEY!
     );
 
-    // Setup client
     client = Client.forTestnet();
     client.setOperator(MY_ACCOUNT_ID, MY_PRIVATE_KEY);
 
-    // -------- STEP 1: Upload shipment JSON to Lighthouse/Filecoin --------
     const shipmentData = {
       shipmentId,
       from,
@@ -45,9 +43,6 @@ router.post("/create-nft", async (req, res) => {
       createdBy: MY_ACCOUNT_ID.toString(),
       createdAT: Date.now()
     };
-
-    console.log("++++++++++++++++++++++++++",shipmentData);
-    
 
     const apiKey = process.env.LIGHTHOUSE_API_KEY!;
     const name = `shipment-${shipmentData.shipmentId}`;
@@ -58,7 +53,6 @@ router.post("/create-nft", async (req, res) => {
 
     console.log("Shipment uploaded to Lighthouse/IPFS:", shipmentCID);
 
-    // -------- STEP 2: Create NFT token on Hedera --------
     const tokenCreateTx = await new TokenCreateTransaction()
       .setTokenName(tokenName)
       .setTokenSymbol(tokenSymbol)
@@ -75,7 +69,6 @@ router.post("/create-nft", async (req, res) => {
 
     const tokenId = tokenCreateReceipt.tokenId?.toString();
 
-    // -------- STEP 3: Mint NFT with metadata pointing to shipment.json --------
     const tokenMintTx = await new TokenMintTransaction()
       .setTokenId(tokenId!)
       .setMetadata([Buffer.from(`ipfs://${shipmentCID}/shipment.json`)])
@@ -85,14 +78,36 @@ router.post("/create-nft", async (req, res) => {
     const tokenMintSubmit = await tokenMintSign.execute(client);
     const tokenMintReceipt = await tokenMintSubmit.getReceipt(client);
 
-    // -------- STEP 4: Return response --------
+    const { data, error } = await supabase.from("shipments").insert([
+      {
+        shipment_id: shipmentId,
+        token_id: tokenId,
+        nft_mint_tx_id: tokenMintSubmit.transactionId.toString(),
+        shipment_cid: `ipfs://${shipmentCID}/shipment.json`,
+        sender: from,
+        receiver: to,
+        contents,
+      },
+    ]);
+
+    if (error) {
+      console.error("Supabase insert error:", error);
+    } else {
+      console.log("Shipment saved in DB:", data);
+    }
+
     res.json({
       success: true,
+      shipmentId,
+      from,
+      to,
+      contents,
       tokenId,
-      nftMintTransactionId: tokenMintSubmit.transactionId.toString(),
-      hashscanMintUrl: `https://hashscan.io/testnet/tx/${tokenMintSubmit.transactionId.toString()}`,
+      nftMintTxId: tokenMintSubmit.transactionId.toString(),
       shipmentCID: `ipfs://${shipmentCID}/shipment.json`,
+      hashscanMintUrl: `https://hashscan.io/testnet/tx/${tokenMintSubmit.transactionId.toString()}`,
     });
+
   } catch (error: any) {
     console.error(error);
     res.status(500).json({
