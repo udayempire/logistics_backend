@@ -18,12 +18,12 @@ router.post("/create-nft", async (req, res) => {
   let client: Client | null = null;
 
   try {
-    const { tokenName, tokenSymbol, shipmentId, from, to, contents } = req.body;
+    const { tokenName, tokenSymbol, shipmentId, from, to, contents, receiverAccountId } = req.body;
 
-    if (!tokenName || !tokenSymbol || !shipmentId || !from || !to || !contents) {
+    if (!tokenName || !tokenSymbol || !shipmentId || !from || !to || !contents || !receiverAccountId) {
       return res.status(400).json({
         success: false,
-        error: "Missing fields",
+        error: "Missing fields (tokenName, tokenSymbol, shipmentId, from, to, contents, receiverAccountId)",
       });
     }
 
@@ -87,6 +87,8 @@ router.post("/create-nft", async (req, res) => {
         receiver: to,
         contents,
         current_location: from,
+        current_owner: MY_ACCOUNT_ID.toString(),
+        receiver_account_id: receiverAccountId,
         status: 'Not Delivered'
       },
     ]);
