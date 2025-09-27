@@ -1,0 +1,12 @@
+node_modules
+.env
+dist
+package-lock.json
+tsconfig.json
+tsconfig.buildinfo
+tsconfig.tsbuildinfo
+tsconfig.tsbuildinfo.json
+tsconfig.tsbuildinfo.json.map
+tsconfig.tsbuildinfo.json.map.map
+tsconfig.tsbuildinfo.json.map.map.map
+tsconfig.tsbuildinfo.json.map.map.map.map
