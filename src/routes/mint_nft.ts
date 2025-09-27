@@ -5,8 +5,11 @@ import {
   Client,
   TokenCreateTransaction,
   TokenType,
+  TokenSupplyType,
+  TokenMintTransaction,
 } from "@hashgraph/sdk";
 import "dotenv/config";
+import lighthouse from "@lighthouse-web3/sdk";
 
 const router = express.Router();
 
@@ -14,48 +17,81 @@ router.post("/create-nft", async (req, res) => {
   let client: Client | null = null;
 
   try {
-    const { tokenName, tokenSymbol } = req.body;
+    const { tokenName, tokenSymbol, shipmentId, from, to, contents } = req.body;
 
-    if (!tokenName || !tokenSymbol) {
+    if (!tokenName || !tokenSymbol|| !shipmentId || !from || !to || !contents) {
       return res.status(400).json({
         success: false,
-        error: "tokenName and tokenSymbol are required in request body",
+        error: "Missing fields",
       });
     }
 
     // Load credentials
     const MY_ACCOUNT_ID = AccountId.fromString(process.env.MY_ACCOUNT_ID!);
-    const MY_PRIVATE_KEY = PrivateKey.fromStringECDSA(process.env.MY_PRIVATE_KEY!);
+    const MY_PRIVATE_KEY = PrivateKey.fromStringECDSA(
+      process.env.MY_PRIVATE_KEY!
+    );
 
     // Setup client
     client = Client.forTestnet();
     client.setOperator(MY_ACCOUNT_ID, MY_PRIVATE_KEY);
 
-    // Create NFT token
-    const txTokenCreate = await new TokenCreateTransaction()
+    // -------- STEP 1: Upload shipment JSON to Lighthouse/Filecoin --------
+    const shipmentData = {
+      shipmentId,
+      from,
+      to,
+      contents,
+      createdBy: MY_ACCOUNT_ID.toString(),
+      createdAT: Date.now()
+    };
+
+    console.log("++++++++++++++++++++++++++",shipmentData);
+    
+
+    const apiKey = process.env.LIGHTHOUSE_API_KEY!;
+    const name = `shipment-${shipmentData.shipmentId}`;
+    const text = JSON.stringify(shipmentData);
+
+    const lighthouseResp = await lighthouse.uploadText(text, apiKey, name);
+    const shipmentCID = lighthouseResp.data.Hash;
+
+    console.log("Shipment uploaded to Lighthouse/IPFS:", shipmentCID);
+
+    // -------- STEP 2: Create NFT token on Hedera --------
+    const tokenCreateTx = await new TokenCreateTransaction()
       .setTokenName(tokenName)
       .setTokenSymbol(tokenSymbol)
       .setTokenType(TokenType.NonFungibleUnique)
+      .setSupplyType(TokenSupplyType.Finite)
+      .setMaxSupply(1)
       .setTreasuryAccountId(MY_ACCOUNT_ID)
       .setSupplyKey(MY_PRIVATE_KEY)
       .freezeWith(client);
 
-    // Sign & execute
-    const signTxTokenCreate = await txTokenCreate.sign(MY_PRIVATE_KEY);
-    const txTokenCreateResponse = await signTxTokenCreate.execute(client);
+    const tokenCreateSign = await tokenCreateTx.sign(MY_PRIVATE_KEY);
+    const tokenCreateSubmit = await tokenCreateSign.execute(client);
+    const tokenCreateReceipt = await tokenCreateSubmit.getReceipt(client);
 
-    // Receipt
-    const receiptTokenCreateTx = await txTokenCreateResponse.getReceipt(client);
-    const tokenId = receiptTokenCreateTx.tokenId;
-    const statusTokenCreateTx = receiptTokenCreateTx.status;
-    const txTokenCreateId = txTokenCreateResponse.transactionId.toString();
+    const tokenId = tokenCreateReceipt.tokenId?.toString();
 
+    // -------- STEP 3: Mint NFT with metadata pointing to shipment.json --------
+    const tokenMintTx = await new TokenMintTransaction()
+      .setTokenId(tokenId!)
+      .setMetadata([Buffer.from(`ipfs://${shipmentCID}/shipment.json`)])
+      .freezeWith(client);
+
+    const tokenMintSign = await tokenMintTx.sign(MY_PRIVATE_KEY);
+    const tokenMintSubmit = await tokenMintSign.execute(client);
+    const tokenMintReceipt = await tokenMintSubmit.getReceipt(client);
+
+    // -------- STEP 4: Return response --------
     res.json({
       success: true,
-      status: statusTokenCreateTx.toString(),
-      transactionId: txTokenCreateId,
-      hashscanUrl: `https://hashscan.io/testnet/tx/${txTokenCreateId}`,
-      tokenId: tokenId?.toString(),
+      tokenId,
+      nftMintTransactionId: tokenMintSubmit.transactionId.toString(),
+      hashscanMintUrl: `https://hashscan.io/testnet/tx/${tokenMintSubmit.transactionId.toString()}`,
+      shipmentCID: `ipfs://${shipmentCID}/shipment.json`,
     });
   } catch (error: any) {
     console.error(error);
