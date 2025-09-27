@@ -76,7 +76,6 @@ router.post("/create-nft", async (req, res) => {
 
     const tokenMintSign = await tokenMintTx.sign(MY_PRIVATE_KEY);
     const tokenMintSubmit = await tokenMintSign.execute(client);
-    const tokenMintReceipt = await tokenMintSubmit.getReceipt(client);
 
     const { data, error } = await supabase.from("shipments").insert([
       {
@@ -87,6 +86,7 @@ router.post("/create-nft", async (req, res) => {
         sender: from,
         receiver: to,
         contents,
+        current_location: from
       },
     ]);
 

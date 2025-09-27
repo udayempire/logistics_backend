@@ -5,26 +5,23 @@ const router = express.Router();
 
 router.get("/verify-shipment", async (req, res) => {
   try {
-    const { shipmentId, tokenId } = req.query;
+    const { shipmentId, tokenId, location } = req.query;
 
     if (!shipmentId && !tokenId) {
       return res.status(400).json({
         success: false,
-        error: "Please provide shipmentId and tokenId",
+        error: "Please provide shipmentId or tokenId",
       });
     }
 
     let query = supabase.from("shipments").select("*");
 
-    if (shipmentId) {
-      query = query.eq("shipment_id", shipmentId);
-    } else if (tokenId) {
-      query = query.eq("token_id", tokenId);
-    }
+    if (shipmentId) query = query.eq("shipment_id", shipmentId);
+    if (tokenId) query = query.eq("token_id", tokenId);
 
-    const { data, error } = await query;
+    const { data, error: selectError } = await query;
 
-    if (error) throw error;
+    if (selectError) throw selectError;
 
     if (!data || data.length === 0) {
       return res.status(404).json({
@@ -33,10 +30,21 @@ router.get("/verify-shipment", async (req, res) => {
       });
     }
 
-    // Shipment found
+    const shipment = data[0];
+
+    if (location) {
+      const { data: updateData, error: updateError } = await supabase
+        .from("shipments")
+        .update({ current_location: location })
+        .eq("shipment_id", shipment.shipment_id);
+
+      if (updateError) console.error("Error updating location:", updateError);
+      else shipment.current_location = location;
+    }
+
     res.json({
       success: true,
-      shipment: data[0],
+      shipment,
     });
   } catch (err: any) {
     console.error(err);
