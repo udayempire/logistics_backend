@@ -86,7 +86,8 @@ router.post("/create-nft", async (req, res) => {
         sender: from,
         receiver: to,
         contents,
-        current_location: from
+        current_location: from,
+        status: 'Not Delivered'
       },
     ]);
 
