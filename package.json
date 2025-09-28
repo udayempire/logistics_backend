@@ -17,6 +17,7 @@
     "@lighthouse-web3/sdk": "^0.4.2",
     "@supabase/supabase-js": "^2.58.0",
     "axios": "^1.12.2",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "nodemon": "^3.1.10",
@@ -25,6 +26,7 @@
     "web3.storage": "^4.5.5"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "tsx": "^4.20.6"
   }
